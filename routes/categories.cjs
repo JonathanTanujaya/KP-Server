@@ -1,6 +1,6 @@
 function registerCategoryRoutes(fastify, { db }) {
   fastify.get('/api/categories', async () => {
-    return db.all(
+    return await db.all(
       'SELECT id, kode AS kode_kategori, nama AS nama_kategori, created_at, updated_at FROM m_kategori ORDER BY nama ASC'
     );
   });
@@ -21,12 +21,12 @@ function registerCategoryRoutes(fastify, { db }) {
       return reply.code(400).send({ error: 'nama_kategori is required' });
     }
 
-    const exists = db.get('SELECT id FROM m_kategori WHERE kode = ?', [kodeParam]);
+    const exists = await db.get('SELECT id FROM m_kategori WHERE kode = ?', [kodeParam]);
     if (!exists) return reply.code(404).send({ error: 'not found' });
 
     try {
-      db.run('UPDATE m_kategori SET nama = ? WHERE kode = ?', [nama.trim(), kodeParam]);
-      const updated = db.get(
+      await db.run('UPDATE m_kategori SET nama = ? WHERE kode = ?', [nama.trim(), kodeParam]);
+      const updated = await db.get(
         'SELECT id, kode AS kode_kategori, nama AS nama_kategori, created_at, updated_at FROM m_kategori WHERE kode = ?',
         [kodeParam]
       );
@@ -41,18 +41,18 @@ function registerCategoryRoutes(fastify, { db }) {
     const kodeParam = String(request.params?.kode ?? '').trim();
     if (!kodeParam) return reply.code(400).send({ error: 'kode_kategori is required' });
 
-    const exists = db.get('SELECT id FROM m_kategori WHERE kode = ?', [kodeParam]);
+    const exists = await db.get('SELECT id FROM m_kategori WHERE kode = ?', [kodeParam]);
     if (!exists) return reply.code(404).send({ error: 'not found' });
 
     const usedByItems = Number(
-      db.get('SELECT COUNT(*) AS cnt FROM m_barang WHERE kategori_kode = ?', [kodeParam])?.cnt ?? 0
+      (await db.get('SELECT COUNT(*) AS cnt FROM m_barang WHERE kategori_kode = ?', [kodeParam]))?.cnt ?? 0
     );
     if (usedByItems > 0) {
       return reply.code(409).send({ error: 'kategori is used by items' });
     }
 
     try {
-      db.run('DELETE FROM m_kategori WHERE kode = ?', [kodeParam]);
+      await db.run('DELETE FROM m_kategori WHERE kode = ?', [kodeParam]);
       return reply.code(204).send();
     } catch (err) {
       fastify.log.error(err);
@@ -74,8 +74,8 @@ function registerCategoryRoutes(fastify, { db }) {
     }
 
     try {
-      const result = db.run('INSERT INTO m_kategori (kode, nama) VALUES (?, ?)', [kode.trim(), nama.trim()]);
-      const created = db.get(
+      const result = await db.run('INSERT INTO m_kategori (kode, nama) VALUES (?, ?)', [kode.trim(), nama.trim()]);
+      const created = await db.get(
         'SELECT id, kode AS kode_kategori, nama AS nama_kategori, created_at, updated_at FROM m_kategori WHERE id = ?',
         [result.lastInsertRowid]
       );

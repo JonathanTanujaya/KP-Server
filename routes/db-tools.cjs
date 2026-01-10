@@ -30,13 +30,22 @@ function isLoopbackIp(ip) {
   return v === "127.0.0.1" || v === "::1" || v === "::ffff:127.0.0.1";
 }
 
-function canRunFirstRunDbSetup({ fastify, db, request, reply }) {
+function requireSqlite(fastify, reply) {
+  if (fastify.dbProvider && fastify.dbProvider !== "sqlite") {
+    reply.code(400).send({ error: "not supported for this db provider" });
+    return false;
+  }
+  return true;
+}
+
+async function canRunFirstRunDbSetup({ fastify, db, request, reply }) {
+  if (!requireSqlite(fastify, reply)) return false;
   if (!isLoopbackIp(request.ip)) {
     reply.code(403).send({ error: "forbidden" });
     return false;
   }
 
-  const row = db.get("SELECT COUNT(1) AS userCount FROM m_user");
+  const row = await db.get("SELECT COUNT(1) AS userCount FROM m_user");
   const userCount = Number(row?.userCount || 0);
   if (userCount > 0) {
     reply.code(409).send({ error: "bootstrap already completed" });
@@ -63,7 +72,7 @@ function registerDbToolsRoutes(fastify, { db }) {
   // First-run (pre-login) DB setup endpoints.
   // Only allowed on loopback and only when DB has no users (bootstrap not completed).
   fastify.get("/api/setup/db/status", async (request, reply) => {
-    if (!canRunFirstRunDbSetup({ fastify, db, request, reply })) return;
+    if (!(await canRunFirstRunDbSetup({ fastify, db, request, reply }))) return;
 
     const dbPath = fastify.dbPath;
     let size = null;
@@ -90,11 +99,11 @@ function registerDbToolsRoutes(fastify, { db }) {
 
   // Create a fresh DB by moving the current file aside. Requires app restart to reload sql.js.
   fastify.post("/api/setup/db/new", async (request, reply) => {
-    if (!canRunFirstRunDbSetup({ fastify, db, request, reply })) return;
+    if (!(await canRunFirstRunDbSetup({ fastify, db, request, reply }))) return;
 
     // Flush latest in-memory DB to disk first.
     try {
-      db.save?.();
+      await db.save?.();
     } catch (_) {
       // ignore
     }
@@ -132,7 +141,7 @@ function registerDbToolsRoutes(fastify, { db }) {
     "/api/setup/db/restore",
     { bodyLimit: 50 * 1024 * 1024 },
     async (request, reply) => {
-      if (!canRunFirstRunDbSetup({ fastify, db, request, reply })) return;
+      if (!(await canRunFirstRunDbSetup({ fastify, db, request, reply }))) return;
 
       const body = request.body;
       if (!Buffer.isBuffer(body) || body.length === 0) {
@@ -144,7 +153,7 @@ function registerDbToolsRoutes(fastify, { db }) {
 
       // Flush latest in-memory DB to disk first.
       try {
-        db.save?.();
+        await db.save?.();
       } catch (_) {
         // ignore
       }
@@ -201,7 +210,8 @@ function registerDbToolsRoutes(fastify, { db }) {
   );
 
   fastify.get("/api/admin/db/info", async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    if (!requireSqlite(fastify, reply)) return;
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
@@ -222,13 +232,14 @@ function registerDbToolsRoutes(fastify, { db }) {
   });
 
   fastify.get("/api/admin/db/backup", async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    if (!requireSqlite(fastify, reply)) return;
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
     // Flush latest in-memory DB to disk first.
     try {
-      db.save?.();
+      await db.save?.();
     } catch (_) {
       // ignore
     }
@@ -245,7 +256,8 @@ function registerDbToolsRoutes(fastify, { db }) {
 
   // Restore DB from raw bytes. Requires app restart to reload sql.js database.
   fastify.post("/api/admin/db/restore", async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    if (!requireSqlite(fastify, reply)) return;
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
@@ -310,7 +322,7 @@ function registerDbToolsRoutes(fastify, { db }) {
   // DEV ONLY: Reset app by deleting/rotating the DB file.
   // Because sql.js keeps an in-memory DB, a restart is required to start fresh.
   fastify.post("/api/admin/db/reset", async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
@@ -320,7 +332,7 @@ function registerDbToolsRoutes(fastify, { db }) {
 
     // Flush latest in-memory DB to disk first.
     try {
-      db.save?.();
+      await db.save?.();
     } catch (_) {
       // ignore
     }

@@ -23,7 +23,7 @@ function registerLedgerRoutes(fastify, { db }) {
 
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
-    return db.all(
+    return await db.all(
       `SELECT k.id,
               k.waktu,
               k.ref_type,

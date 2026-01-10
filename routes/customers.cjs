@@ -1,6 +1,6 @@
 function registerCustomerRoutes(fastify, { db }) {
   fastify.get("/api/customers", async () => {
-    return db.all(
+    return await db.all(
       `SELECT id,
               kode AS kode_customer,
               nama AS nama_customer,
@@ -38,13 +38,13 @@ function registerCustomerRoutes(fastify, { db }) {
       return reply.code(400).send({ error: "nama_customer is required" });
     }
 
-    const exists = db.get("SELECT id FROM m_customer WHERE kode = ?", [
+    const exists = await db.get("SELECT id FROM m_customer WHERE kode = ?", [
       kodeParam,
     ]);
     if (!exists) return reply.code(404).send({ error: "not found" });
 
     if (kode_area) {
-      const areaExists = db.get("SELECT id FROM m_area WHERE kode = ?", [
+      const areaExists = await db.get("SELECT id FROM m_area WHERE kode = ?", [
         String(kode_area).trim(),
       ]);
       if (!areaExists)
@@ -52,7 +52,7 @@ function registerCustomerRoutes(fastify, { db }) {
     }
 
     try {
-      db.run(
+      await db.run(
         "UPDATE m_customer SET nama = ?, area_kode = ?, telepon = ?, kontak_person = ?, alamat = ? WHERE kode = ?",
         [
           nama.trim(),
@@ -64,7 +64,7 @@ function registerCustomerRoutes(fastify, { db }) {
         ]
       );
 
-      const updated = db.get(
+      const updated = await db.get(
         `SELECT id,
                 kode AS kode_customer,
                 nama AS nama_customer,
@@ -90,13 +90,13 @@ function registerCustomerRoutes(fastify, { db }) {
     if (!kodeParam)
       return reply.code(400).send({ error: "kode_customer is required" });
 
-    const exists = db.get("SELECT id FROM m_customer WHERE kode = ?", [
+    const exists = await db.get("SELECT id FROM m_customer WHERE kode = ?", [
       kodeParam,
     ]);
     if (!exists) return reply.code(404).send({ error: "not found" });
 
     try {
-      db.run("DELETE FROM m_customer WHERE kode = ?", [kodeParam]);
+      await db.run("DELETE FROM m_customer WHERE kode = ?", [kodeParam]);
       return reply.code(204).send();
     } catch (err) {
       fastify.log.error(err);
@@ -122,12 +122,12 @@ function registerCustomerRoutes(fastify, { db }) {
     }
 
     try {
-      const result = db.run(
+      const result = await db.run(
         "INSERT INTO m_customer (kode, nama, area_kode, telepon, kontak_person, alamat) VALUES (?, ?, ?, ?, ?, ?)",
         [kode.trim(), nama.trim(), kode_area, telepon, kontak_person, alamat]
       );
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id,
                 kode AS kode_customer,
                 nama AS nama_customer,

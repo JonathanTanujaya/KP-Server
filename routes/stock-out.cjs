@@ -9,7 +9,7 @@ function parsePositiveInt(value) {
 function registerStockOutRoutes(fastify, { db }) {
   fastify.get('/api/stock-out', async (request) => {
     const limit = Math.min(500, Math.max(1, Number(request.query?.limit ?? 100)));
-    return db.all(
+    return await db.all(
       `SELECT id,
               no_faktur,
               tanggal,
@@ -28,7 +28,7 @@ function registerStockOutRoutes(fastify, { db }) {
     const id = Number(request.params?.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'id is required' });
 
-    const header = db.get(
+    const header = await db.get(
       `SELECT id,
               no_faktur,
               tanggal,
@@ -42,7 +42,7 @@ function registerStockOutRoutes(fastify, { db }) {
     );
     if (!header) return reply.code(404).send({ error: 'not found' });
 
-    const items = db.all(
+    const items = await db.all(
       `SELECT d.id,
               d.barang_kode AS kode_barang,
               b.nama_barang,
@@ -72,13 +72,13 @@ function registerStockOutRoutes(fastify, { db }) {
     if (items.length === 0) return reply.code(400).send({ error: 'items is required' });
 
     if (customer_kode) {
-      const cust = db.get('SELECT id FROM m_customer WHERE kode = ?', [customer_kode]);
+      const cust = await db.get('SELECT id FROM m_customer WHERE kode = ?', [customer_kode]);
       if (!cust) return reply.code(400).send({ error: 'kode_customer not found' });
     }
 
     try {
-      const result = db.transaction((tx) => {
-        const headerRes = tx.run(
+      const result = await db.transaction(async (tx) => {
+        const headerRes = await tx.run(
           `INSERT INTO t_stok_keluar (no_faktur, tanggal, customer_kode, catatan)
            VALUES (?, ?, ?, ?)`,
           [no_faktur, tanggal, customer_kode || null, catatan]
@@ -94,7 +94,7 @@ function registerStockOutRoutes(fastify, { db }) {
           if (!kode_barang) throw new Error('kode_barang is required');
           if (!jumlah) throw new Error('jumlah must be > 0');
 
-          const barang = tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
+          const barang = await tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
           if (!barang) {
             const e = new Error('kode_barang not found');
             e.statusCode = 400;
@@ -109,16 +109,16 @@ function registerStockOutRoutes(fastify, { db }) {
             throw e;
           }
 
-          tx.run(
+          await tx.run(
             `INSERT INTO t_stok_keluar_detail (stok_keluar_id, barang_kode, qty, harga_jual)
              VALUES (?, ?, ?, ?)`,
             [headerId, kode_barang, jumlah, harga_jual]
           );
 
-          tx.run('UPDATE m_barang SET stok = stok - ? WHERE kode_barang = ?', [jumlah, kode_barang]);
+          await tx.run('UPDATE m_barang SET stok = stok - ? WHERE kode_barang = ?', [jumlah, kode_barang]);
 
-          const after = tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
-          tx.run(
+          const after = await tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
+          await tx.run(
             `INSERT INTO t_kartu_stok (waktu, ref_type, ref_no, barang_kode, qty_in, qty_out, stok_after, keterangan)
              VALUES (?, 'OUT', ?, ?, 0, ?, ?, ?)`,
             [tanggal, no_faktur, kode_barang, jumlah, after?.stok ?? null, catatan]
@@ -128,7 +128,7 @@ function registerStockOutRoutes(fastify, { db }) {
         return { headerId };
       });
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id,
                 no_faktur,
                 tanggal,

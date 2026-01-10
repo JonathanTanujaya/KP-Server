@@ -1,4 +1,4 @@
-const path = require("path");
+ const path = require("path");
 const fastifyFactory = require("fastify");
 const cors = require("@fastify/cors");
 const fastifyStatic = require("@fastify/static");
@@ -28,9 +28,10 @@ async function createServer({ host, port, isPackaged, distDir, dataDir }) {
   fastify.decorate("isPackaged", Boolean(isPackaged));
   fastify.decorate("skipDbSaveOnClose", false);
 
-  const { db, dbPath } = await initDb({ dataDir });
-  fastify.log.info({ dbPath }, "SQLite initialized");
+  const { db, dbPath, provider } = await initDb({ dataDir });
+  fastify.log.info({ provider, dbPath }, "Database initialized");
   fastify.decorate("dbPath", dbPath);
+  fastify.decorate("dbProvider", provider || "sqlite");
 
   // Allow binary restore uploads without multipart.
   fastify.addContentTypeParser(
@@ -43,7 +44,7 @@ async function createServer({ host, port, isPackaged, distDir, dataDir }) {
 
   fastify.addHook("onClose", async () => {
     try {
-      db.close({ save: !fastify.skipDbSaveOnClose });
+      await db.close({ save: !fastify.skipDbSaveOnClose });
     } catch (err) {
       fastify.log.error(err);
     }

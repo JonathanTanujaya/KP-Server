@@ -1,6 +1,6 @@
 function registerAreaRoutes(fastify, { db }) {
   fastify.get('/api/areas', async () => {
-    const rows = db.all(
+    const rows = await db.all(
       'SELECT id, kode AS kode_area, nama AS nama_area, created_at, updated_at FROM m_area ORDER BY nama ASC'
     );
     return rows;
@@ -24,12 +24,12 @@ function registerAreaRoutes(fastify, { db }) {
       return reply.code(400).send({ error: 'nama is required' });
     }
 
-    const exists = db.get('SELECT id FROM m_area WHERE kode = ?', [kodeParam]);
+    const exists = await db.get('SELECT id FROM m_area WHERE kode = ?', [kodeParam]);
     if (!exists) return reply.code(404).send({ error: 'not found' });
 
     try {
-      db.run('UPDATE m_area SET nama = ? WHERE kode = ?', [nama.trim(), kodeParam]);
-      const updated = db.get(
+      await db.run('UPDATE m_area SET nama = ? WHERE kode = ?', [nama.trim(), kodeParam]);
+      const updated = await db.get(
         'SELECT id, kode AS kode_area, nama AS nama_area, created_at, updated_at FROM m_area WHERE kode = ?',
         [kodeParam]
       );
@@ -44,18 +44,18 @@ function registerAreaRoutes(fastify, { db }) {
     const kodeParam = String(request.params?.kode ?? '').trim();
     if (!kodeParam) return reply.code(400).send({ error: 'kode is required' });
 
-    const exists = db.get('SELECT id FROM m_area WHERE kode = ?', [kodeParam]);
+    const exists = await db.get('SELECT id FROM m_area WHERE kode = ?', [kodeParam]);
     if (!exists) return reply.code(404).send({ error: 'not found' });
 
     const usedByCustomers = Number(
-      db.get('SELECT COUNT(*) AS cnt FROM m_customer WHERE area_kode = ?', [kodeParam])?.cnt ?? 0
+      (await db.get('SELECT COUNT(*) AS cnt FROM m_customer WHERE area_kode = ?', [kodeParam]))?.cnt ?? 0
     );
     if (usedByCustomers > 0) {
       return reply.code(409).send({ error: 'area is used by customers' });
     }
 
     try {
-      db.run('DELETE FROM m_area WHERE kode = ?', [kodeParam]);
+      await db.run('DELETE FROM m_area WHERE kode = ?', [kodeParam]);
       return reply.code(204).send();
     } catch (err) {
       fastify.log.error(err);
@@ -77,8 +77,8 @@ function registerAreaRoutes(fastify, { db }) {
     }
 
     try {
-      const result = db.run('INSERT INTO m_area (kode, nama) VALUES (?, ?)', [kode.trim(), nama.trim()]);
-      const created = db.get(
+      const result = await db.run('INSERT INTO m_area (kode, nama) VALUES (?, ?)', [kode.trim(), nama.trim()]);
+      const created = await db.get(
         'SELECT id, kode AS kode_area, nama AS nama_area, created_at, updated_at FROM m_area WHERE id = ?',
         [result.lastInsertRowid]
       );

@@ -14,7 +14,7 @@ function registerStockInRoutes(fastify, { db }) {
       500,
       Math.max(1, Number(request.query?.limit ?? 100))
     );
-    return db.all(
+    return await db.all(
       `SELECT id,
               no_faktur,
               tanggal,
@@ -34,7 +34,7 @@ function registerStockInRoutes(fastify, { db }) {
     if (!Number.isFinite(id))
       return reply.code(400).send({ error: "id is required" });
 
-    const header = db.get(
+    const header = await db.get(
       `SELECT id,
               no_faktur,
               tanggal,
@@ -48,7 +48,7 @@ function registerStockInRoutes(fastify, { db }) {
     );
     if (!header) return reply.code(404).send({ error: "not found" });
 
-    const items = db.all(
+    const items = await db.all(
       `SELECT d.id,
               d.barang_kode AS kode_barang,
               b.nama_barang,
@@ -85,7 +85,7 @@ function registerStockInRoutes(fastify, { db }) {
       return reply.code(400).send({ error: "items is required" });
 
     if (supplier_kode) {
-      const sup = db.get("SELECT id FROM m_supplier WHERE kode = ?", [
+      const sup = await db.get("SELECT id FROM m_supplier WHERE kode = ?", [
         supplier_kode,
       ]);
       if (!sup)
@@ -93,8 +93,8 @@ function registerStockInRoutes(fastify, { db }) {
     }
 
     try {
-      const result = db.transaction((tx) => {
-        const headerRes = tx.run(
+      const result = await db.transaction(async (tx) => {
+        const headerRes = await tx.run(
           `INSERT INTO t_stok_masuk (no_faktur, tanggal, supplier_kode, catatan)
            VALUES (?, ?, ?, ?)`,
           [no_faktur, tanggal, supplier_kode || null, catatan]
@@ -119,7 +119,7 @@ function registerStockInRoutes(fastify, { db }) {
             throw e;
           }
 
-          const barang = tx.get(
+          const barang = await tx.get(
             "SELECT stok FROM m_barang WHERE kode_barang = ?",
             [kode_barang]
           );
@@ -131,22 +131,22 @@ function registerStockInRoutes(fastify, { db }) {
             throw e;
           }
 
-          tx.run(
+          await tx.run(
             `INSERT INTO t_stok_masuk_detail (stok_masuk_id, barang_kode, qty, harga_beli)
              VALUES (?, ?, ?, ?)`,
             [headerId, kode_barang, jumlah, harga_beli]
           );
 
-          tx.run("UPDATE m_barang SET stok = stok + ? WHERE kode_barang = ?", [
+          await tx.run("UPDATE m_barang SET stok = stok + ? WHERE kode_barang = ?", [
             jumlah,
             kode_barang,
           ]);
 
-          const after = tx.get(
+          const after = await tx.get(
             "SELECT stok FROM m_barang WHERE kode_barang = ?",
             [kode_barang]
           );
-          tx.run(
+          await tx.run(
             `INSERT INTO t_kartu_stok (waktu, ref_type, ref_no, barang_kode, qty_in, qty_out, stok_after, keterangan)
              VALUES (?, 'IN', ?, ?, ?, 0, ?, ?)`,
             [
@@ -163,7 +163,7 @@ function registerStockInRoutes(fastify, { db }) {
         return { headerId };
       });
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id,
                 no_faktur,
                 tanggal,

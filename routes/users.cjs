@@ -12,12 +12,12 @@ function requireOwner(session, reply) {
 function registerUserRoutes(fastify, { db }) {
   // Auth routes must be registered before this to decorate fastify.auth
   fastify.get('/api/users', async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
 
     if (!requireOwner(session, reply)) return;
 
-    const rows = db.all(
+    const rows = await db.all(
       `SELECT id, username, nama, role, avatar, must_change_password, is_active, created_at, updated_at
        FROM m_user
        ORDER BY role ASC, nama ASC`
@@ -37,7 +37,7 @@ function registerUserRoutes(fastify, { db }) {
   });
 
   fastify.post('/api/users', async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
@@ -54,13 +54,13 @@ function registerUserRoutes(fastify, { db }) {
     if (!['admin', 'staff'].includes(role)) return reply.code(400).send({ error: 'role must be admin or staff' });
 
     try {
-      const result = db.run(
+      const result = await db.run(
         `INSERT INTO m_user (username, password_hash, nama, role, avatar, must_change_password, is_active)
          VALUES (?, ?, ?, ?, ?, 0, 1)`,
         [username, hashPassword(password), nama, role, avatar]
       );
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id, username, nama, role, avatar, must_change_password, is_active, created_at, updated_at
          FROM m_user
          WHERE id = ?`,
@@ -88,7 +88,7 @@ function registerUserRoutes(fastify, { db }) {
   });
 
   fastify.put('/api/users/:id', async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
@@ -101,7 +101,7 @@ function registerUserRoutes(fastify, { db }) {
     const avatar = body.avatar != null ? body.avatar : undefined;
     const isActive = body.isActive != null ? (body.isActive ? 1 : 0) : undefined;
 
-    const existing = db.get('SELECT id, role FROM m_user WHERE id = ?', [id]);
+    const existing = await db.get('SELECT id, role FROM m_user WHERE id = ?', [id]);
     if (!existing) return reply.code(404).send({ error: 'not found' });
     if (existing.role === 'owner') return reply.code(400).send({ error: 'cannot modify owner user' });
 
@@ -109,7 +109,7 @@ function registerUserRoutes(fastify, { db }) {
       return reply.code(400).send({ error: 'role must be admin or staff' });
     }
 
-    db.run(
+    await db.run(
       `UPDATE m_user
        SET nama = COALESCE(?, nama),
            role = COALESCE(?, role),
@@ -125,7 +125,7 @@ function registerUserRoutes(fastify, { db }) {
       ]
     );
 
-    const updated = db.get(
+    const updated = await db.get(
       `SELECT id, username, nama, role, avatar, must_change_password, is_active, created_at, updated_at
        FROM m_user
        WHERE id = ?`,
@@ -146,24 +146,24 @@ function registerUserRoutes(fastify, { db }) {
   });
 
   fastify.delete('/api/users/:id', async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
     const id = Number(request.params?.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid id' });
 
-    const existing = db.get('SELECT id, role FROM m_user WHERE id = ?', [id]);
+    const existing = await db.get('SELECT id, role FROM m_user WHERE id = ?', [id]);
     if (!existing) return reply.code(404).send({ error: 'not found' });
     if (existing.role === 'owner') return reply.code(400).send({ error: 'cannot delete owner user' });
 
-    db.run('DELETE FROM m_user WHERE id = ?', [id]);
+    await db.run('DELETE FROM m_user WHERE id = ?', [id]);
     return reply.code(204).send();
   });
 
   // Owner resets another user's password
   fastify.post('/api/users/:id/reset-password', async (request, reply) => {
-    const session = fastify.auth?.requireAuth(request, reply);
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
@@ -176,11 +176,11 @@ function registerUserRoutes(fastify, { db }) {
       return reply.code(400).send({ error: 'newPassword must be at least 4 characters' });
     }
 
-    const existing = db.get('SELECT id, role FROM m_user WHERE id = ?', [id]);
+    const existing = await db.get('SELECT id, role FROM m_user WHERE id = ?', [id]);
     if (!existing) return reply.code(404).send({ error: 'not found' });
     if (existing.role === 'owner') return reply.code(400).send({ error: 'cannot reset owner password here' });
 
-    db.run('UPDATE m_user SET password_hash = ?, must_change_password = 0 WHERE id = ?', [hashPassword(newPassword), id]);
+    await db.run('UPDATE m_user SET password_hash = ?, must_change_password = 0 WHERE id = ?', [hashPassword(newPassword), id]);
     return reply.send({ ok: true });
   });
 }

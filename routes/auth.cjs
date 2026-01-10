@@ -15,8 +15,8 @@ function getBearerToken(request) {
 }
 
 function createAuthService({ db, sessions }) {
-  function getUserById(id) {
-    return db.get(
+  async function getUserById(id) {
+    return await db.get(
       `SELECT id, username, nama, role, avatar, must_change_password, is_active
        FROM m_user
        WHERE id = ?`,
@@ -24,18 +24,18 @@ function createAuthService({ db, sessions }) {
     );
   }
 
-  function authenticate(request) {
+  async function authenticate(request) {
     const token = getBearerToken(request);
     if (!token) return null;
     const userId = sessions.get(token);
     if (!userId) return null;
-    const user = getUserById(userId);
+    const user = await getUserById(userId);
     if (!user || Number(user.is_active) !== 1) return null;
     return { token, user };
   }
 
-  function requireAuth(request, reply) {
-    const session = authenticate(request);
+  async function requireAuth(request, reply) {
+    const session = await authenticate(request);
     if (!session) {
       reply.code(401).send({ error: "unauthorized" });
       return null;
@@ -65,7 +65,7 @@ function registerAuthRoutes(fastify, { db }) {
         .send({ error: "username and password are required" });
     }
 
-    const found = db.get(
+    const found = await db.get(
       `SELECT id, username, password_hash, nama, role, avatar, must_change_password, is_active
        FROM m_user
        WHERE username = ?`,
@@ -97,7 +97,7 @@ function registerAuthRoutes(fastify, { db }) {
   });
 
   fastify.get("/api/auth/me", async (request, reply) => {
-    const session = auth.requireAuth(request, reply);
+    const session = await auth.requireAuth(request, reply);
     if (!session) return;
 
     const user = {
@@ -120,7 +120,7 @@ function registerAuthRoutes(fastify, { db }) {
 
   // Self password change
   fastify.post("/api/auth/change-password", async (request, reply) => {
-    const session = auth.requireAuth(request, reply);
+    const session = await auth.requireAuth(request, reply);
     if (!session) return;
 
     const body = request.body || {};
@@ -138,7 +138,7 @@ function registerAuthRoutes(fastify, { db }) {
         .send({ error: "newPassword must be at least 4 characters" });
     }
 
-    const existing = db.get("SELECT password_hash FROM m_user WHERE id = ?", [
+    const existing = await db.get("SELECT password_hash FROM m_user WHERE id = ?", [
       session.user.id,
     ]);
     if (!existing) return reply.code(404).send({ error: "user not found" });
@@ -148,7 +148,7 @@ function registerAuthRoutes(fastify, { db }) {
       return reply.code(400).send({ error: "current password is incorrect" });
 
     const nextHash = hashPassword(newPassword);
-    db.run(
+    await db.run(
       "UPDATE m_user SET password_hash = ?, must_change_password = 0 WHERE id = ?",
       [nextHash, session.user.id]
     );
@@ -158,14 +158,14 @@ function registerAuthRoutes(fastify, { db }) {
 
   // Bootstrap (first run) helpers
   fastify.get("/api/auth/bootstrap-status", async (_request, reply) => {
-    const row = db.get("SELECT COUNT(1) AS userCount FROM m_user");
+    const row = await db.get("SELECT COUNT(1) AS userCount FROM m_user");
     const userCount = Number(row?.userCount || 0);
     return reply.send({ hasUsers: userCount > 0, userCount });
   });
 
   // Create the very first owner user (only allowed when DB has no users)
   fastify.post("/api/auth/bootstrap-owner", async (request, reply) => {
-    const row = db.get("SELECT COUNT(1) AS userCount FROM m_user");
+    const row = await db.get("SELECT COUNT(1) AS userCount FROM m_user");
     const userCount = Number(row?.userCount || 0);
     if (userCount > 0) {
       return reply.code(409).send({ error: "bootstrap already completed" });
@@ -186,13 +186,13 @@ function registerAuthRoutes(fastify, { db }) {
     }
 
     try {
-      const result = db.run(
+      const result = await db.run(
         `INSERT INTO m_user (username, password_hash, nama, role, avatar, must_change_password, is_active)
          VALUES (?, ?, ?, 'owner', NULL, 0, 1)`,
         [username, hashPassword(password), nama]
       );
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id, username, nama, role, avatar, must_change_password, is_active, created_at, updated_at
          FROM m_user
          WHERE id = ?`,

@@ -1,6 +1,6 @@
 function registerItemRoutes(fastify, { db }) {
   fastify.get('/api/items', async () => {
-    return db.all(
+    return await db.all(
       `SELECT id,
               kode_barang,
               nama_barang,
@@ -38,11 +38,11 @@ function registerItemRoutes(fastify, { db }) {
       return reply.code(400).send({ error: 'nama_barang is required' });
     }
 
-    const exists = db.get('SELECT id FROM m_barang WHERE kode_barang = ?', [kodeParam]);
+    const exists = await db.get('SELECT id FROM m_barang WHERE kode_barang = ?', [kodeParam]);
     if (!exists) return reply.code(404).send({ error: 'not found' });
 
     if (kategori_id) {
-      const katExists = db.get('SELECT id FROM m_kategori WHERE kode = ?', [String(kategori_id).trim()]);
+      const katExists = await db.get('SELECT id FROM m_kategori WHERE kode = ?', [String(kategori_id).trim()]);
       if (!katExists) return reply.code(400).send({ error: 'kategori_id not found' });
     }
 
@@ -57,12 +57,12 @@ function registerItemRoutes(fastify, { db }) {
 
     try {
       // Keep existing values when a field is omitted
-      const current = db.get(
+      const current = await db.get(
         'SELECT kategori_kode, satuan, stok, stok_minimal, harga_beli, harga_jual FROM m_barang WHERE kode_barang = ?',
         [kodeParam]
       );
 
-      db.run(
+      await db.run(
         `UPDATE m_barang
          SET nama_barang = ?,
              kategori_kode = ?,
@@ -84,7 +84,7 @@ function registerItemRoutes(fastify, { db }) {
         ]
       );
 
-      const updated = db.get(
+      const updated = await db.get(
         `SELECT id,
                 kode_barang,
                 nama_barang,
@@ -112,11 +112,11 @@ function registerItemRoutes(fastify, { db }) {
     const kodeParam = String(request.params?.kode_barang ?? '').trim();
     if (!kodeParam) return reply.code(400).send({ error: 'kode_barang is required' });
 
-    const exists = db.get('SELECT id FROM m_barang WHERE kode_barang = ?', [kodeParam]);
+    const exists = await db.get('SELECT id FROM m_barang WHERE kode_barang = ?', [kodeParam]);
     if (!exists) return reply.code(404).send({ error: 'not found' });
 
     try {
-      db.run('DELETE FROM m_barang WHERE kode_barang = ?', [kodeParam]);
+      await db.run('DELETE FROM m_barang WHERE kode_barang = ?', [kodeParam]);
       return reply.code(204).send();
     } catch (err) {
       fastify.log.error(err);
@@ -145,7 +145,7 @@ function registerItemRoutes(fastify, { db }) {
     }
 
     try {
-      const result = db.run(
+      const result = await db.run(
         `INSERT INTO m_barang (kode_barang, nama_barang, kategori_kode, satuan, stok, stok_minimal, harga_beli, harga_jual)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -160,7 +160,7 @@ function registerItemRoutes(fastify, { db }) {
         ]
       );
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id,
                 kode_barang,
                 nama_barang,

@@ -1,6 +1,6 @@
 function registerReportRoutes(fastify, { db }) {
   fastify.get("/api/reports/stok-barang", async () => {
-    return db.all(
+    return await db.all(
       `SELECT b.id,
               b.kode_barang,
               b.nama_barang,
@@ -24,7 +24,7 @@ function registerReportRoutes(fastify, { db }) {
   });
 
   fastify.get("/api/reports/stok-alert", async () => {
-    return db.all(
+    return await db.all(
       `SELECT b.id,
               b.kode_barang,
               b.nama_barang,
@@ -57,7 +57,7 @@ function registerReportRoutes(fastify, { db }) {
       Math.max(1, Number(request.query?.limit ?? 200))
     );
 
-    const rows = db.all(
+    const rows = await db.all(
       `SELECT * FROM (
         SELECT 'pembelian' AS tipe,
                'Pembelian' AS tipe_label,
@@ -151,7 +151,7 @@ function registerReportRoutes(fastify, { db }) {
         return reply.code(400).send({ error: "id is required" });
 
       if (tipe === "pembelian") {
-        const header = db.get(
+        const header = await db.get(
           `SELECT h.id,
                 h.no_faktur AS ref_no,
                 h.tanggal,
@@ -165,8 +165,7 @@ function registerReportRoutes(fastify, { db }) {
         );
         if (!header) return reply.code(404).send({ error: "not found" });
 
-        const items = db
-          .all(
+        const items = (await db.all(
             `SELECT d.id,
                 d.barang_kode AS kode_barang,
                 b.nama_barang,
@@ -178,7 +177,7 @@ function registerReportRoutes(fastify, { db }) {
          WHERE d.stok_masuk_id = ?
          ORDER BY d.id ASC`,
             [id]
-          )
+          ))
           .map((it) => ({
             ...it,
             subtotal: Number(it.jumlah ?? 0) * Number(it.harga ?? 0),
@@ -199,7 +198,7 @@ function registerReportRoutes(fastify, { db }) {
       }
 
       if (tipe === "penjualan") {
-        const header = db.get(
+        const header = await db.get(
           `SELECT h.id,
                 h.no_faktur AS ref_no,
                 h.tanggal,
@@ -213,8 +212,7 @@ function registerReportRoutes(fastify, { db }) {
         );
         if (!header) return reply.code(404).send({ error: "not found" });
 
-        const items = db
-          .all(
+        const items = (await db.all(
             `SELECT d.id,
                 d.barang_kode AS kode_barang,
                 b.nama_barang,
@@ -226,7 +224,7 @@ function registerReportRoutes(fastify, { db }) {
          WHERE d.stok_keluar_id = ?
          ORDER BY d.id ASC`,
             [id]
-          )
+          ))
           .map((it) => ({
             ...it,
             subtotal: Number(it.jumlah ?? 0) * Number(it.harga ?? 0),
@@ -247,7 +245,7 @@ function registerReportRoutes(fastify, { db }) {
       }
 
       if (tipe === "opname") {
-        const header = db.get(
+        const header = await db.get(
           `SELECT id,
                 no_opname AS ref_no,
                 tanggal,
@@ -258,7 +256,7 @@ function registerReportRoutes(fastify, { db }) {
         );
         if (!header) return reply.code(404).send({ error: "not found" });
 
-        const items = db.all(
+        const items = await db.all(
           `SELECT d.id,
                 d.barang_kode AS kode_barang,
                 b.nama_barang,
@@ -286,7 +284,7 @@ function registerReportRoutes(fastify, { db }) {
       }
 
       if (tipe === "customer-claim") {
-        const header = db.get(
+        const header = await db.get(
           `SELECT h.id,
                 h.no_claim AS ref_no,
                 h.tanggal,
@@ -300,8 +298,7 @@ function registerReportRoutes(fastify, { db }) {
         );
         if (!header) return reply.code(404).send({ error: "not found" });
 
-        const items = db
-          .all(
+        const items = (await db.all(
             `SELECT d.id,
                 d.barang_kode AS kode_barang,
                 b.nama_barang,
@@ -313,7 +310,7 @@ function registerReportRoutes(fastify, { db }) {
          WHERE d.customer_claim_id = ?
          ORDER BY d.id ASC`,
             [id]
-          )
+          ))
           .map((it) => ({ ...it, subtotal: 0 }));
 
         return reply.send({
@@ -338,12 +335,12 @@ function registerReportRoutes(fastify, { db }) {
       if (!kodeBarang)
         return reply.code(400).send({ error: "kode_barang is required" });
 
-      const exists = db.get("SELECT id FROM m_barang WHERE kode_barang = ?", [
+      const exists = await db.get("SELECT id FROM m_barang WHERE kode_barang = ?", [
         kodeBarang,
       ]);
       if (!exists) return reply.code(404).send({ error: "item not found" });
 
-      const rows = db.all(
+      const rows = await db.all(
         `SELECT s.kode AS kode_supplier,
               s.nama AS nama_supplier,
               s.alamat,
@@ -402,37 +399,38 @@ function registerReportRoutes(fastify, { db }) {
     startDateObj.setDate(startDateObj.getDate() - (days - 1));
     const startDate = startDateObj.toISOString().slice(0, 10);
 
-    const totalSKU = Number(
-      db.get("SELECT COUNT(*) AS c FROM m_barang")?.c ?? 0
-    );
+    const totalSKU = Number((await db.get("SELECT COUNT(*) AS c FROM m_barang"))?.c ?? 0);
     const stokAlertCount = Number(
-      db.get("SELECT COUNT(*) AS c FROM m_barang WHERE stok <= stok_minimal")
-        ?.c ?? 0
+      (await db.get("SELECT COUNT(*) AS c FROM m_barang WHERE stok <= stok_minimal"))?.c ?? 0
     );
     const stokMasukHariIni = Number(
-      db.get(
-        `SELECT COALESCE(SUM(qty_in), 0) AS v
-         FROM t_kartu_stok
-         WHERE date(waktu) = ?`,
-        [today]
+      (
+        await db.get(
+          `SELECT COALESCE(SUM(qty_in), 0) AS v
+           FROM t_kartu_stok
+           WHERE waktu = ?`,
+          [today]
+        )
       )?.v ?? 0
     );
     const stokKeluarHariIni = Number(
-      db.get(
-        `SELECT COALESCE(SUM(qty_out), 0) AS v
-         FROM t_kartu_stok
-         WHERE date(waktu) = ?`,
-        [today]
+      (
+        await db.get(
+          `SELECT COALESCE(SUM(qty_out), 0) AS v
+           FROM t_kartu_stok
+           WHERE waktu = ?`,
+          [today]
+        )
       )?.v ?? 0
     );
 
-    const chartRows = db.all(
-      `SELECT date(waktu) AS d,
+    const chartRows = await db.all(
+      `SELECT waktu AS d,
               COALESCE(SUM(qty_in), 0) AS masuk,
               COALESCE(SUM(qty_out), 0) AS keluar
        FROM t_kartu_stok
-       WHERE date(waktu) BETWEEN ? AND ?
-       GROUP BY date(waktu)
+       WHERE waktu BETWEEN ? AND ?
+       GROUP BY waktu
        ORDER BY d ASC`,
       [startDate, today]
     );
@@ -452,48 +450,48 @@ function registerReportRoutes(fastify, { db }) {
       chart.push({ date: key, masuk: agg.masuk, keluar: agg.keluar });
     }
 
-    const monthAgg = (monthKey) =>
-      db.get(
+    const monthAgg = async (monthKey) =>
+      (await db.get(
         `SELECT COALESCE(SUM(qty_in), 0) AS masuk,
                 COALESCE(SUM(qty_out), 0) AS keluar
          FROM t_kartu_stok
-         WHERE strftime('%Y-%m', waktu) = ?`,
+         WHERE to_char(waktu, 'YYYY-MM') = ?`,
         [monthKey]
-      ) || { masuk: 0, keluar: 0 };
+      )) || { masuk: 0, keluar: 0 };
 
-    const thisMonthAgg = monthAgg(thisMonth);
-    const prevMonthAgg = monthAgg(prevMonth);
+    const thisMonthAgg = await monthAgg(thisMonth);
+    const prevMonthAgg = await monthAgg(prevMonth);
 
-    const transCountForMonth = (monthKey) => {
+    const transCountForMonth = async (monthKey) => {
       const pembelian = Number(
-        db.get(
-          "SELECT COUNT(*) AS c FROM t_stok_masuk WHERE strftime('%Y-%m', tanggal) = ?",
+        (await db.get(
+          "SELECT COUNT(*) AS c FROM t_stok_masuk WHERE to_char(tanggal, 'YYYY-MM') = ?",
           [monthKey]
-        )?.c ?? 0
+        ))?.c ?? 0
       );
       const penjualan = Number(
-        db.get(
-          "SELECT COUNT(*) AS c FROM t_stok_keluar WHERE strftime('%Y-%m', tanggal) = ?",
+        (await db.get(
+          "SELECT COUNT(*) AS c FROM t_stok_keluar WHERE to_char(tanggal, 'YYYY-MM') = ?",
           [monthKey]
-        )?.c ?? 0
+        ))?.c ?? 0
       );
       const opname = Number(
-        db.get(
-          "SELECT COUNT(*) AS c FROM t_stok_opname WHERE strftime('%Y-%m', tanggal) = ?",
+        (await db.get(
+          "SELECT COUNT(*) AS c FROM t_stok_opname WHERE to_char(tanggal, 'YYYY-MM') = ?",
           [monthKey]
-        )?.c ?? 0
+        ))?.c ?? 0
       );
       const claim = Number(
-        db.get(
-          "SELECT COUNT(*) AS c FROM t_customer_claim WHERE strftime('%Y-%m', tanggal) = ?",
+        (await db.get(
+          "SELECT COUNT(*) AS c FROM t_customer_claim WHERE to_char(tanggal, 'YYYY-MM') = ?",
           [monthKey]
-        )?.c ?? 0
+        ))?.c ?? 0
       );
       return pembelian + penjualan + opname + claim;
     };
 
-    const thisTrans = transCountForMonth(thisMonth);
-    const prevTrans = transCountForMonth(prevMonth);
+    const thisTrans = await transCountForMonth(thisMonth);
+    const prevTrans = await transCountForMonth(prevMonth);
 
     const pct = (current, previous) => {
       const c = Number(current ?? 0);
@@ -517,7 +515,7 @@ function registerReportRoutes(fastify, { db }) {
       },
     };
 
-    const topRows = db.all(
+    const topRows = await db.all(
       `SELECT d.barang_kode AS kode,
               b.nama_barang AS nama,
               b.satuan AS satuan,
@@ -525,7 +523,7 @@ function registerReportRoutes(fastify, { db }) {
        FROM t_stok_keluar h
        JOIN t_stok_keluar_detail d ON d.stok_keluar_id = h.id
        JOIN m_barang b ON b.kode_barang = d.barang_kode
-       WHERE strftime('%Y-%m', h.tanggal) = ?
+       WHERE to_char(h.tanggal, 'YYYY-MM') = ?
        GROUP BY d.barang_kode
        ORDER BY qty DESC
        LIMIT ?`,
@@ -540,7 +538,7 @@ function registerReportRoutes(fastify, { db }) {
       satuan: r.satuan ?? null,
     }));
 
-    const activityRows = db.all(
+    const activityRows = await db.all(
       `SELECT ks.id,
               ks.waktu,
               ks.ref_type,

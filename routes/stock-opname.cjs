@@ -7,7 +7,7 @@ function parseIntOrNull(value) {
 function registerStockOpnameRoutes(fastify, { db }) {
   fastify.get('/api/stock-opname', async (request) => {
     const limit = Math.min(500, Math.max(1, Number(request.query?.limit ?? 100)));
-    return db.all(
+    return await db.all(
       `SELECT id,
               no_opname,
               tanggal,
@@ -25,7 +25,7 @@ function registerStockOpnameRoutes(fastify, { db }) {
     const id = Number(request.params?.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'id is required' });
 
-    const header = db.get(
+    const header = await db.get(
       `SELECT id,
               no_opname,
               tanggal,
@@ -38,7 +38,7 @@ function registerStockOpnameRoutes(fastify, { db }) {
     );
     if (!header) return reply.code(404).send({ error: 'not found' });
 
-    const items = db.all(
+    const items = await db.all(
       `SELECT d.id,
               d.barang_kode AS kode_barang,
               b.nama_barang,
@@ -71,8 +71,8 @@ function registerStockOpnameRoutes(fastify, { db }) {
     if (detail_items.length === 0) return reply.code(400).send({ error: 'detail_items is required' });
 
     try {
-      const result = db.transaction((tx) => {
-        const headerRes = tx.run(
+      const result = await db.transaction(async (tx) => {
+        const headerRes = await tx.run(
           `INSERT INTO t_stok_opname (no_opname, tanggal, catatan)
            VALUES (?, ?, ?)`,
           [no_opname, tanggal, catatan]
@@ -93,7 +93,7 @@ function registerStockOpnameRoutes(fastify, { db }) {
             throw e;
           }
 
-          const barang = tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
+          const barang = await tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
           if (!barang) {
             const e = new Error('kode_barang not found');
             e.statusCode = 400;
@@ -104,19 +104,19 @@ function registerStockOpnameRoutes(fastify, { db }) {
           const stok_sistem = Number(barang.stok) || 0;
           const selisih = stok_fisik - stok_sistem;
 
-          tx.run(
+          await tx.run(
             `INSERT INTO t_stok_opname_detail (stok_opname_id, barang_kode, stok_sistem, stok_fisik, selisih, keterangan)
              VALUES (?, ?, ?, ?, ?, ?)`,
             [headerId, kode_barang, stok_sistem, stok_fisik, selisih, keterangan]
           );
 
           // Apply adjustment to item stock
-          tx.run('UPDATE m_barang SET stok = ? WHERE kode_barang = ?', [stok_fisik, kode_barang]);
+          await tx.run('UPDATE m_barang SET stok = ? WHERE kode_barang = ?', [stok_fisik, kode_barang]);
 
           const qty_in = selisih > 0 ? selisih : 0;
           const qty_out = selisih < 0 ? Math.abs(selisih) : 0;
 
-          tx.run(
+          await tx.run(
             `INSERT INTO t_kartu_stok (waktu, ref_type, ref_no, barang_kode, qty_in, qty_out, stok_after, keterangan)
              VALUES (?, 'ADJ', ?, ?, ?, ?, ?, ?)`,
             [tanggal, no_opname, kode_barang, qty_in, qty_out, stok_fisik, keterangan || catatan]
@@ -126,7 +126,7 @@ function registerStockOpnameRoutes(fastify, { db }) {
         return { headerId };
       });
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id,
                 no_opname,
                 tanggal,

@@ -1,6 +1,6 @@
 function registerSupplierRoutes(fastify, { db }) {
   fastify.get("/api/suppliers", async () => {
-    return db.all(
+    return await db.all(
       "SELECT id, kode AS kode_supplier, nama AS nama_supplier, telepon, email, alamat, created_at, updated_at FROM m_supplier ORDER BY nama ASC"
     );
   });
@@ -27,17 +27,17 @@ function registerSupplierRoutes(fastify, { db }) {
       return reply.code(400).send({ error: "nama_supplier is required" });
     }
 
-    const exists = db.get("SELECT id FROM m_supplier WHERE kode = ?", [
+    const exists = await db.get("SELECT id FROM m_supplier WHERE kode = ?", [
       kodeParam,
     ]);
     if (!exists) return reply.code(404).send({ error: "not found" });
 
     try {
-      db.run(
+      await db.run(
         "UPDATE m_supplier SET nama = ?, telepon = ?, email = ?, alamat = ? WHERE kode = ?",
         [nama.trim(), telepon, email, alamat, kodeParam]
       );
-      const updated = db.get(
+      const updated = await db.get(
         "SELECT id, kode AS kode_supplier, nama AS nama_supplier, telepon, email, alamat, created_at, updated_at FROM m_supplier WHERE kode = ?",
         [kodeParam]
       );
@@ -53,13 +53,13 @@ function registerSupplierRoutes(fastify, { db }) {
     if (!kodeParam)
       return reply.code(400).send({ error: "kode_supplier is required" });
 
-    const exists = db.get("SELECT id FROM m_supplier WHERE kode = ?", [
+    const exists = await db.get("SELECT id FROM m_supplier WHERE kode = ?", [
       kodeParam,
     ]);
     if (!exists) return reply.code(404).send({ error: "not found" });
 
     try {
-      db.run("DELETE FROM m_supplier WHERE kode = ?", [kodeParam]);
+      await db.run("DELETE FROM m_supplier WHERE kode = ?", [kodeParam]);
       return reply.code(204).send();
     } catch (err) {
       fastify.log.error(err);
@@ -84,11 +84,11 @@ function registerSupplierRoutes(fastify, { db }) {
     }
 
     try {
-      const result = db.run(
+      const result = await db.run(
         "INSERT INTO m_supplier (kode, nama, telepon, email, alamat) VALUES (?, ?, ?, ?, ?)",
         [kode.trim(), nama.trim(), telepon, email, alamat]
       );
-      const created = db.get(
+      const created = await db.get(
         "SELECT id, kode AS kode_supplier, nama AS nama_supplier, telepon, email, alamat, created_at, updated_at FROM m_supplier WHERE id = ?",
         [result.lastInsertRowid]
       );

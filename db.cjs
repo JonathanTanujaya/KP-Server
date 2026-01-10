@@ -2,6 +2,8 @@ const fs = require("fs");
 const path = require("path");
 const initSqlJs = require("sql.js");
 
+const { initDbPostgres } = require("./db-postgres.cjs");
+
 function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
@@ -339,13 +341,8 @@ function getScalar(sqlDb, sql, params = []) {
 
 function seedIfEmpty(sqlDb, { seedDir }) {
   if (!seedDir || !fs.existsSync(seedDir)) return;
-
-  const userCount = Number(
-    getScalar(sqlDb, "SELECT COUNT(*) FROM m_user") ?? 0
-  );
-  const areaCount = Number(
-    getScalar(sqlDb, "SELECT COUNT(*) FROM m_area") ?? 0
-  );
+  const userCount = Number(getScalar(sqlDb, "SELECT COUNT(*) FROM m_user") ?? 0);
+  const areaCount = Number(getScalar(sqlDb, "SELECT COUNT(*) FROM m_area") ?? 0);
   const kategoriCount = Number(
     getScalar(sqlDb, "SELECT COUNT(*) FROM m_kategori") ?? 0
   );
@@ -360,6 +357,7 @@ function seedIfEmpty(sqlDb, { seedDir }) {
   );
 
   // IMPORTANT: do not seed users. Owner is created via bootstrap flow.
+  void userCount;
 
   if (areaCount === 0) {
     const areas = readJsonArrayIfExists(path.join(seedDir, "m_area.json"));
@@ -378,9 +376,7 @@ function seedIfEmpty(sqlDb, { seedDir }) {
   }
 
   if (kategoriCount === 0) {
-    const kategori = readJsonArrayIfExists(
-      path.join(seedDir, "m_kategori.json")
-    );
+    const kategori = readJsonArrayIfExists(path.join(seedDir, "m_kategori.json"));
     if (kategori) {
       const stmt = sqlDb.prepare(
         "INSERT OR IGNORE INTO m_kategori (kode, nama) VALUES (?, ?)"
@@ -396,9 +392,7 @@ function seedIfEmpty(sqlDb, { seedDir }) {
   }
 
   if (supplierCount === 0) {
-    const suppliers = readJsonArrayIfExists(
-      path.join(seedDir, "m_supplier.json")
-    );
+    const suppliers = readJsonArrayIfExists(path.join(seedDir, "m_supplier.json"));
     if (suppliers) {
       const stmt = sqlDb.prepare(
         "INSERT OR IGNORE INTO m_supplier (kode, nama, telepon, email, alamat) VALUES (?, ?, ?, ?, ?)"
@@ -420,9 +414,7 @@ function seedIfEmpty(sqlDb, { seedDir }) {
   }
 
   if (customerCount === 0) {
-    const customers = readJsonArrayIfExists(
-      path.join(seedDir, "m_customer.json")
-    );
+    const customers = readJsonArrayIfExists(path.join(seedDir, "m_customer.json"));
     if (customers) {
       const stmt = sqlDb.prepare(
         "INSERT OR IGNORE INTO m_customer (kode, nama, area_kode, telepon, kontak_person, alamat) VALUES (?, ?, ?, ?, ?, ?)"
@@ -455,7 +447,7 @@ function seedIfEmpty(sqlDb, { seedDir }) {
           stmt.run([
             row.kode_barang,
             row.nama_barang,
-            row.kategori_id ?? null,
+            row.kategori_id ?? row.kategori_kode ?? null,
             row.satuan ?? null,
             Number(row.stok ?? 0),
             Number(row.stok_minimal ?? 0),
@@ -1075,7 +1067,7 @@ function createDbFacade({ sqlDb, dbPath, save }) {
       save();
       return changesRow;
     },
-    transaction(fn) {
+    async transaction(fn) {
       sqlDb.exec("BEGIN");
       const tx = {
         all,
@@ -1092,7 +1084,7 @@ function createDbFacade({ sqlDb, dbPath, save }) {
       };
 
       try {
-        const result = fn(tx);
+        const result = await fn(tx);
         sqlDb.exec("COMMIT");
         save();
         return result;
@@ -1105,8 +1097,8 @@ function createDbFacade({ sqlDb, dbPath, save }) {
         throw err;
       }
     },
-    save,
-    close(opts = {}) {
+    save: async () => save(),
+    async close(opts = {}) {
       const shouldSave =
         opts && Object.prototype.hasOwnProperty.call(opts, "save")
           ? Boolean(opts.save)
@@ -1118,6 +1110,11 @@ function createDbFacade({ sqlDb, dbPath, save }) {
 }
 
 async function initDb({ dataDir }) {
+  // If DATABASE_URL is present, prefer PostgreSQL.
+  if (process.env.DATABASE_URL) {
+    return initDbPostgres();
+  }
+
   if (!dataDir) {
     throw new Error("dataDir is required");
   }
@@ -1164,7 +1161,7 @@ async function initDb({ dataDir }) {
   save();
 
   const db = createDbFacade({ sqlDb, dbPath, save });
-  return { db, dbPath };
+  return { db, dbPath, provider: "sqlite" };
 }
 
 module.exports = { initDb };

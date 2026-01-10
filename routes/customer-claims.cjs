@@ -9,7 +9,7 @@ function parsePositiveInt(value) {
 function registerCustomerClaimRoutes(fastify, { db }) {
   fastify.get('/api/customer-claims', async (request) => {
     const limit = Math.min(500, Math.max(1, Number(request.query?.limit ?? 100)));
-    return db.all(
+    return await db.all(
       `SELECT id,
               no_claim,
               tanggal,
@@ -28,7 +28,7 @@ function registerCustomerClaimRoutes(fastify, { db }) {
     const id = Number(request.params?.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'id is required' });
 
-    const header = db.get(
+    const header = await db.get(
       `SELECT id,
               no_claim,
               tanggal,
@@ -42,7 +42,7 @@ function registerCustomerClaimRoutes(fastify, { db }) {
     );
     if (!header) return reply.code(404).send({ error: 'not found' });
 
-    const items = db.all(
+    const items = await db.all(
       `SELECT d.id,
               d.barang_kode AS kode_barang,
               b.nama_barang,
@@ -71,13 +71,13 @@ function registerCustomerClaimRoutes(fastify, { db }) {
     if (items.length === 0) return reply.code(400).send({ error: 'items is required' });
 
     if (customer_kode) {
-      const cust = db.get('SELECT id FROM m_customer WHERE kode = ?', [customer_kode]);
+      const cust = await db.get('SELECT id FROM m_customer WHERE kode = ?', [customer_kode]);
       if (!cust) return reply.code(400).send({ error: 'kode_customer not found' });
     }
 
     try {
-      const result = db.transaction((tx) => {
-        const headerRes = tx.run(
+      const result = await db.transaction(async (tx) => {
+        const headerRes = await tx.run(
           `INSERT INTO t_customer_claim (no_claim, tanggal, customer_kode, catatan)
            VALUES (?, ?, ?, ?)`,
           [no_claim, tanggal, customer_kode || null, catatan]
@@ -91,7 +91,7 @@ function registerCustomerClaimRoutes(fastify, { db }) {
           if (!kode_barang) throw new Error('kode_barang is required');
           if (!jumlah) throw new Error('jumlah must be > 0');
 
-          const barang = tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
+          const barang = await tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
           if (!barang) {
             const e = new Error('kode_barang not found');
             e.statusCode = 400;
@@ -106,16 +106,16 @@ function registerCustomerClaimRoutes(fastify, { db }) {
             throw e;
           }
 
-          tx.run(
+          await tx.run(
             `INSERT INTO t_customer_claim_detail (customer_claim_id, barang_kode, qty)
              VALUES (?, ?, ?)`,
             [headerId, kode_barang, jumlah]
           );
 
-          tx.run('UPDATE m_barang SET stok = stok - ? WHERE kode_barang = ?', [jumlah, kode_barang]);
+          await tx.run('UPDATE m_barang SET stok = stok - ? WHERE kode_barang = ?', [jumlah, kode_barang]);
 
-          const after = tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
-          tx.run(
+          const after = await tx.get('SELECT stok FROM m_barang WHERE kode_barang = ?', [kode_barang]);
+          await tx.run(
             `INSERT INTO t_kartu_stok (waktu, ref_type, ref_no, barang_kode, qty_in, qty_out, stok_after, keterangan)
              VALUES (?, 'CLAIM_OUT', ?, ?, 0, ?, ?, ?)`,
             [tanggal, no_claim, kode_barang, jumlah, after?.stok ?? null, catatan]
@@ -125,7 +125,7 @@ function registerCustomerClaimRoutes(fastify, { db }) {
         return { headerId };
       });
 
-      const created = db.get(
+      const created = await db.get(
         `SELECT id,
                 no_claim,
                 tanggal,
