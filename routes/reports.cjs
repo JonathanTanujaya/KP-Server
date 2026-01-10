@@ -18,7 +18,18 @@ function registerReportRoutes(fastify, { db }) {
        FROM m_barang b
        LEFT JOIN m_kategori k ON k.kode = b.kategori_kode
        LEFT JOIN t_kartu_stok ks ON ks.barang_kode = b.kode_barang
-       GROUP BY b.id
+       GROUP BY b.id,
+                b.kode_barang,
+                b.nama_barang,
+                b.kategori_kode,
+                k.nama,
+                b.satuan,
+                b.stok,
+                b.stok_minimal,
+                b.harga_beli,
+                b.harga_jual,
+                b.created_at,
+                b.updated_at
        ORDER BY b.nama_barang ASC`
     );
   });
@@ -46,7 +57,18 @@ function registerReportRoutes(fastify, { db }) {
        LEFT JOIN m_kategori k ON k.kode = b.kategori_kode
        LEFT JOIN t_kartu_stok ks ON ks.barang_kode = b.kode_barang
        WHERE b.stok <= b.stok_minimal
-       GROUP BY b.id
+       GROUP BY b.id,
+                b.kode_barang,
+                b.nama_barang,
+                b.kategori_kode,
+                k.nama,
+                b.satuan,
+                b.stok,
+                b.stok_minimal,
+                b.harga_beli,
+                b.harga_jual,
+                b.created_at,
+                b.updated_at
        ORDER BY (CASE WHEN b.stok = 0 THEN 0 ELSE 1 END) ASC, b.nama_barang ASC`
     );
   });
@@ -524,7 +546,7 @@ function registerReportRoutes(fastify, { db }) {
        JOIN t_stok_keluar_detail d ON d.stok_keluar_id = h.id
        JOIN m_barang b ON b.kode_barang = d.barang_kode
        WHERE to_char(h.tanggal, 'YYYY-MM') = ?
-       GROUP BY d.barang_kode
+       GROUP BY d.barang_kode, b.nama_barang, b.satuan
        ORDER BY qty DESC
        LIMIT ?`,
       [thisMonth, limitTop]
