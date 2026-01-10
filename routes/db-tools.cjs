@@ -25,6 +25,89 @@ function looksLikeSqliteFile(buf) {
   return buf.subarray(0, 16).toString("utf8") === "SQLite format 3\u0000";
 }
 
+function looksLikeSqlText(text) {
+  const s = String(text || "").trim().toUpperCase();
+  if (!s) return false;
+  // Heuristics for SQLite/SQL dumps.
+  return (
+    s.includes("CREATE TABLE") ||
+    s.includes("INSERT INTO") ||
+    s.includes("BEGIN TRANSACTION") ||
+    s.includes("COMMIT") ||
+    s.startsWith("PRAGMA ")
+  );
+}
+
+async function readUploadedPayload(request) {
+  // Supports:
+  // - multipart/form-data (browser file upload)
+  // - raw bytes (application/octet-stream)
+  // - raw text (text/plain, application/sql)
+  if (typeof request.isMultipart === "function" && request.isMultipart()) {
+    const part = await request.file();
+    if (!part) return null;
+    const buffer = await part.toBuffer();
+    return {
+      kind: "multipart",
+      buffer,
+      filename: part.filename,
+      mimetype: part.mimetype,
+    };
+  }
+
+  const body = request.body;
+  if (Buffer.isBuffer(body)) {
+    return { kind: "buffer", buffer: body, filename: null, mimetype: request.headers["content-type"] };
+  }
+  if (typeof body === "string") {
+    return { kind: "text", text: body, filename: null, mimetype: request.headers["content-type"] };
+  }
+
+  return null;
+}
+
+function escapeSqliteIdent(name) {
+  return `"${String(name || "").replace(/"/g, '""')}"`;
+}
+
+async function restoreSqliteFromSql({ db, sqlText }) {
+  const text = String(sqlText || "").trim();
+  if (!text) {
+    const err = new Error("empty sql");
+    err.code = "EMPTY_SQL";
+    throw err;
+  }
+
+  // Drop all objects (tables, triggers, views, indexes) before running the SQL script.
+  // Keep it outside an explicit transaction to avoid clashes if the SQL script contains BEGIN/COMMIT.
+  db.exec("PRAGMA foreign_keys = OFF;");
+
+  const objects = db.all(
+    "SELECT type, name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND type IN ('table','index','trigger','view')"
+  );
+
+  // Drop non-table objects first (usually depends on tables).
+  const order = { trigger: 1, view: 2, index: 3, table: 4 };
+  objects
+    .sort((a, b) => (order[a.type] || 99) - (order[b.type] || 99))
+    .forEach((obj) => {
+      const type = String(obj.type || "").toUpperCase();
+      const name = escapeSqliteIdent(obj.name);
+      if (type === "TABLE") {
+        db.exec(`DROP TABLE IF EXISTS ${name};`);
+      } else if (type === "INDEX") {
+        db.exec(`DROP INDEX IF EXISTS ${name};`);
+      } else if (type === "TRIGGER") {
+        db.exec(`DROP TRIGGER IF EXISTS ${name};`);
+      } else if (type === "VIEW") {
+        db.exec(`DROP VIEW IF EXISTS ${name};`);
+      }
+    });
+
+  db.exec("PRAGMA foreign_keys = ON;");
+  db.exec(text);
+}
+
 function isLoopbackIp(ip) {
   const v = String(ip || "").trim();
   return v === "127.0.0.1" || v === "::1" || v === "::ffff:127.0.0.1";
@@ -143,11 +226,64 @@ function registerDbToolsRoutes(fastify, { db }) {
     async (request, reply) => {
       if (!(await canRunFirstRunDbSetup({ fastify, db, request, reply }))) return;
 
-      const body = request.body;
+      const payload = await readUploadedPayload(request);
+      if (!payload) {
+        return reply.code(400).send({ error: "empty upload" });
+      }
+
+      // Accept .sql restore (in-memory, no restart needed)
+      if (payload.kind === "text") {
+        try {
+          await restoreSqliteFromSql({ db, sqlText: payload.text });
+        } catch (err) {
+          return reply.code(400).send({
+            error: "invalid sql",
+            detail: String(err?.message || err),
+          });
+        }
+
+        const noSeedMarkerPath = touchNoSeedMarker(fastify.dbPath);
+        return reply.send({
+          ok: true,
+          noSeedMarkerPath,
+          requiresRestart: false,
+          message: "Restore SQL selesai. Database sudah aktif tanpa restart.",
+        });
+      }
+
+      const body = payload.buffer;
       if (!Buffer.isBuffer(body) || body.length === 0) {
         return reply.code(400).send({ error: "empty upload" });
       }
+
       if (!looksLikeSqliteFile(body)) {
+        const filename = String(payload.filename || "").toLowerCase();
+        const mimetype = String(payload.mimetype || "").toLowerCase();
+        const asText = body.toString("utf8");
+        if (
+          filename.endsWith(".sql") ||
+          mimetype.includes("sql") ||
+          mimetype.startsWith("text/") ||
+          looksLikeSqlText(asText)
+        ) {
+          try {
+            await restoreSqliteFromSql({ db, sqlText: asText });
+          } catch (err) {
+            return reply.code(400).send({
+              error: "invalid sql",
+              detail: String(err?.message || err),
+            });
+          }
+
+          const noSeedMarkerPath = touchNoSeedMarker(fastify.dbPath);
+          return reply.send({
+            ok: true,
+            noSeedMarkerPath,
+            requiresRestart: false,
+            message: "Restore SQL selesai. Database sudah aktif tanpa restart.",
+          });
+        }
+
         return reply.code(400).send({ error: "invalid sqlite file" });
       }
 
@@ -210,7 +346,13 @@ function registerDbToolsRoutes(fastify, { db }) {
   );
 
   fastify.get("/api/admin/db/info", async (request, reply) => {
-    if (!requireSqlite(fastify, reply)) return;
+    if (fastify.dbProvider && fastify.dbProvider !== "sqlite") {
+      return reply.send({
+        supported: false,
+        provider: fastify.dbProvider,
+        isPackaged: Boolean(fastify.isPackaged),
+      });
+    }
     const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
@@ -224,6 +366,7 @@ function registerDbToolsRoutes(fastify, { db }) {
     }
 
     return reply.send({
+      supported: true,
       dbPath,
       size,
       isPackaged: Boolean(fastify.isPackaged),
@@ -256,16 +399,78 @@ function registerDbToolsRoutes(fastify, { db }) {
 
   // Restore DB from raw bytes. Requires app restart to reload sql.js database.
   fastify.post("/api/admin/db/restore", async (request, reply) => {
-    if (!requireSqlite(fastify, reply)) return;
+    if (fastify.dbProvider && fastify.dbProvider !== "sqlite") {
+      // Avoid noisy 400s on frontends that probe this endpoint.
+      return reply.send({
+        ok: false,
+        supported: false,
+        provider: fastify.dbProvider,
+        error: "not supported for this db provider",
+      });
+    }
     const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
-    const body = request.body;
-    if (!Buffer.isBuffer(body) || body.length === 0) {
-      return reply.code(400).send({ error: "empty upload" });
+    const payload = await readUploadedPayload(request);
+    if (!payload) {
+      // Return 200 so dashboard probes don't show console errors.
+      return reply.send({ ok: false, error: "empty upload" });
     }
+
+    // Accept .sql restore (in-memory, no restart needed)
+    if (payload.kind === "text") {
+      try {
+        await restoreSqliteFromSql({ db, sqlText: payload.text });
+      } catch (err) {
+        return reply.code(400).send({
+          error: "invalid sql",
+          detail: String(err?.message || err),
+        });
+      }
+
+      const noSeedMarkerPath = touchNoSeedMarker(fastify.dbPath);
+      return reply.send({
+        ok: true,
+        noSeedMarkerPath,
+        requiresRestart: false,
+        message: "Restore SQL selesai. Database sudah aktif tanpa restart.",
+      });
+    }
+
+    const body = payload.buffer;
+    if (!Buffer.isBuffer(body) || body.length === 0) {
+      return reply.send({ ok: false, error: "empty upload" });
+    }
+
     if (!looksLikeSqliteFile(body)) {
+      const filename = String(payload.filename || "").toLowerCase();
+      const mimetype = String(payload.mimetype || "").toLowerCase();
+      const asText = body.toString("utf8");
+      if (
+        filename.endsWith(".sql") ||
+        mimetype.includes("sql") ||
+        mimetype.startsWith("text/") ||
+        looksLikeSqlText(asText)
+      ) {
+        try {
+          await restoreSqliteFromSql({ db, sqlText: asText });
+        } catch (err) {
+          return reply.code(400).send({
+            error: "invalid sql",
+            detail: String(err?.message || err),
+          });
+        }
+
+        const noSeedMarkerPath = touchNoSeedMarker(fastify.dbPath);
+        return reply.send({
+          ok: true,
+          noSeedMarkerPath,
+          requiresRestart: false,
+          message: "Restore SQL selesai. Database sudah aktif tanpa restart.",
+        });
+      }
+
       return reply.code(400).send({ error: "invalid sqlite file" });
     }
 

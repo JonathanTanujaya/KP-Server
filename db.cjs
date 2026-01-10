@@ -1110,8 +1110,19 @@ function createDbFacade({ sqlDb, dbPath, save }) {
 }
 
 async function initDb({ dataDir }) {
-  // If DATABASE_URL is present, prefer PostgreSQL.
-  if (process.env.DATABASE_URL) {
+  // Provider selection.
+  // - DB_PROVIDER=sqlite forces SQLite even if DATABASE_URL exists.
+  // - DB_PROVIDER=postgres forces PostgreSQL (requires DATABASE_URL).
+  // - Otherwise, DATABASE_URL implies PostgreSQL.
+  const forcedProvider = String(process.env.DB_PROVIDER || "")
+    .trim()
+    .toLowerCase();
+
+  if (forcedProvider === "postgres") {
+    return initDbPostgres();
+  }
+
+  if (forcedProvider !== "sqlite" && process.env.DATABASE_URL) {
     return initDbPostgres();
   }
 

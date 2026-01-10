@@ -1,6 +1,7 @@
  const path = require("path");
 const fastifyFactory = require("fastify");
 const cors = require("@fastify/cors");
+const multipart = require("@fastify/multipart");
 const fastifyStatic = require("@fastify/static");
 
 const { registerHealthRoutes } = require("./routes/health.cjs");
@@ -41,6 +42,24 @@ async function createServer({ host, port, isPackaged, distDir, dataDir }) {
       done(null, body);
     }
   );
+
+  // Allow SQL/text uploads without multipart.
+  for (const ct of ["text/plain", "application/sql", "application/x-sql"]) {
+    fastify.addContentTypeParser(
+      ct,
+      { parseAs: "string" },
+      (req, body, done) => {
+        done(null, body);
+      }
+    );
+  }
+
+  // Allow browser file uploads (multipart/form-data) for db restore.
+  await fastify.register(multipart, {
+    limits: {
+      fileSize: 50 * 1024 * 1024,
+    },
+  });
 
   fastify.addHook("onClose", async () => {
     try {
