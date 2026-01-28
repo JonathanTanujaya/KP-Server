@@ -179,7 +179,13 @@ function registerStockInRoutes(fastify, { db }) {
       return reply.code(201).send(created);
     } catch (err) {
       const msg = String(err?.message || "internal error");
-      if (msg.includes("UNIQUE"))
+      const code = String(err?.code || "");
+      const isUnique =
+        msg.includes("UNIQUE") ||
+        msg.toLowerCase().includes("duplicate key value") ||
+        code === "23505";
+
+      if (isUnique)
         return reply.code(409).send({ error: "no_faktur already exists" });
       if (err?.statusCode)
         return reply

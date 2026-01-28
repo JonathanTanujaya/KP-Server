@@ -94,7 +94,14 @@ function registerSupplierRoutes(fastify, { db }) {
       );
       return reply.code(201).send(created);
     } catch (err) {
-      if (err && String(err.message || "").includes("UNIQUE")) {
+      const msg = String(err?.message || "");
+      const code = String(err?.code || "");
+      const isUnique =
+        msg.includes("UNIQUE") ||
+        msg.toLowerCase().includes("duplicate key value") ||
+        code === "23505";
+
+      if (isUnique) {
         return reply.code(409).send({ error: "kode_supplier already exists" });
       }
       fastify.log.error(err);

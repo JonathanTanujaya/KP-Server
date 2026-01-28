@@ -192,12 +192,41 @@ function registerAuthRoutes(fastify, { db }) {
         [username, hashPassword(password), nama]
       );
 
+      const insertedId =
+        result && Object.prototype.hasOwnProperty.call(result, "lastInsertRowid")
+          ? result.lastInsertRowid
+          : null;
+
       const created = await db.get(
         `SELECT id, username, nama, role, avatar, must_change_password, is_active, created_at, updated_at
          FROM m_user
          WHERE id = ?`,
-        [result.lastInsertRowid]
+        [insertedId]
       );
+
+      if (!created) {
+        // Fallback (mainly for non-SQLite providers): re-fetch by unique username.
+        const createdByUsername = await db.get(
+          `SELECT id, username, nama, role, avatar, must_change_password, is_active, created_at, updated_at
+           FROM m_user
+           WHERE username = ?`,
+          [username]
+        );
+        if (!createdByUsername) {
+          return reply.code(500).send({ error: "internal error" });
+        }
+        return reply.code(201).send({
+          id: createdByUsername.id,
+          username: createdByUsername.username,
+          nama: createdByUsername.nama,
+          role: createdByUsername.role,
+          avatar: createdByUsername.avatar,
+          mustChangePassword: Boolean(createdByUsername.must_change_password),
+          isActive: Boolean(createdByUsername.is_active),
+          created_at: createdByUsername.created_at,
+          updated_at: createdByUsername.updated_at,
+        });
+      }
 
       return reply.code(201).send({
         id: created.id,
@@ -211,7 +240,14 @@ function registerAuthRoutes(fastify, { db }) {
         updated_at: created.updated_at,
       });
     } catch (err) {
-      if (err && String(err.message || "").includes("UNIQUE")) {
+      const msg = String(err?.message || "");
+      const code = String(err?.code || "");
+      const isUnique =
+        msg.includes("UNIQUE") ||
+        msg.toLowerCase().includes("duplicate key value") ||
+        code === "23505";
+
+      if (isUnique) {
         return reply.code(409).send({ error: "username already exists" });
       }
       fastify.log.error(err);
