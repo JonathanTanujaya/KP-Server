@@ -115,11 +115,45 @@ function registerItemRoutes(fastify, { db }) {
     const exists = await db.get('SELECT id FROM m_barang WHERE kode_barang = ?', [kodeParam]);
     if (!exists) return reply.code(404).send({ error: 'not found' });
 
+    // Check if item is used in transactions
+    const usedInStokMasuk = await db.get(
+      'SELECT 1 FROM t_stok_masuk_detail WHERE barang_kode = ? LIMIT 1',
+      [kodeParam]
+    );
+    const usedInStokKeluar = await db.get(
+      'SELECT 1 FROM t_stok_keluar_detail WHERE barang_kode = ? LIMIT 1',
+      [kodeParam]
+    );
+    const usedInOpname = await db.get(
+      'SELECT 1 FROM t_stok_opname_detail WHERE barang_kode = ? LIMIT 1',
+      [kodeParam]
+    );
+    const usedInClaim = await db.get(
+      'SELECT 1 FROM t_customer_claim_detail WHERE barang_kode = ? LIMIT 1',
+      [kodeParam]
+    );
+    const usedInLedger = await db.get(
+      'SELECT 1 FROM t_ledger WHERE barang_kode = ? LIMIT 1',
+      [kodeParam]
+    );
+
+    if (usedInStokMasuk || usedInStokKeluar || usedInOpname || usedInClaim || usedInLedger) {
+      return reply.code(400).send({
+        error: 'Barang tidak dapat dihapus karena sudah digunakan dalam transaksi. Anda dapat menonaktifkan barang ini jika tidak ingin digunakan lagi.',
+      });
+    }
+
     try {
       await db.run('DELETE FROM m_barang WHERE kode_barang = ?', [kodeParam]);
       return reply.code(204).send();
     } catch (err) {
       fastify.log.error(err);
+      // Foreign key constraint error
+      if (err.code === '23503' || String(err.message).includes('FOREIGN KEY') || String(err.message).includes('foreign key')) {
+        return reply.code(400).send({
+          error: 'Barang tidak dapat dihapus karena masih terkait dengan data lain.',
+        });
+      }
       return reply.code(500).send({ error: 'internal error' });
     }
   });
