@@ -86,7 +86,7 @@ function registerReportRoutes(fastify, { db }) {
                h.id AS ref_id,
                h.no_faktur AS ref_no,
                h.tanggal,
-               COALESCE(s.nama, h.supplier_kode) AS partner,
+               COALESCE(MAX(s.nama), h.supplier_kode) AS partner,
                'Supplier' AS partner_type,
                COALESCE(SUM(d.qty * COALESCE(d.harga_beli, b.harga_beli, 0)), 0) AS total,
                h.catatan,
@@ -95,7 +95,7 @@ function registerReportRoutes(fastify, { db }) {
         LEFT JOIN m_supplier s ON s.kode = h.supplier_kode
         LEFT JOIN t_stok_masuk_detail d ON d.stok_masuk_id = h.id
         LEFT JOIN m_barang b ON b.kode_barang = d.barang_kode
-        GROUP BY h.id
+        GROUP BY h.id, h.no_faktur, h.tanggal, h.supplier_kode, h.catatan, h.created_at
 
         UNION ALL
 
@@ -104,7 +104,7 @@ function registerReportRoutes(fastify, { db }) {
                h.id AS ref_id,
                h.no_faktur AS ref_no,
                h.tanggal,
-               COALESCE(c.nama, h.customer_kode) AS partner,
+               COALESCE(MAX(c.nama), h.customer_kode) AS partner,
                'Customer' AS partner_type,
                COALESCE(SUM(d.qty * COALESCE(d.harga_jual, b.harga_jual, 0)), 0) AS total,
                h.catatan,
@@ -113,7 +113,7 @@ function registerReportRoutes(fastify, { db }) {
         LEFT JOIN m_customer c ON c.kode = h.customer_kode
         LEFT JOIN t_stok_keluar_detail d ON d.stok_keluar_id = h.id
         LEFT JOIN m_barang b ON b.kode_barang = d.barang_kode
-        GROUP BY h.id
+        GROUP BY h.id, h.no_faktur, h.tanggal, h.customer_kode, h.catatan, h.created_at
 
         UNION ALL
 
