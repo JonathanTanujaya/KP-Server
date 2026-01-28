@@ -175,7 +175,9 @@ function registerAuthRoutes(fastify, { db }) {
     const row = await db.get("SELECT COUNT(1) AS userCount FROM m_user");
     const userCount = Number(row?.userCount || 0);
     if (userCount > 0) {
-      return reply.code(409).send({ error: "bootstrap already completed" });
+      // Treat as idempotent to avoid client-side loops/noisy 409s.
+      // Client can redirect to /login when this flag is present.
+      return reply.code(200).send({ ok: true, alreadyBootstrapped: true });
     }
 
     const body = request.body || {};
