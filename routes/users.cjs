@@ -153,10 +153,15 @@ function registerUserRoutes(fastify, { db }) {
     const id = Number(request.params?.id);
     if (!Number.isFinite(id)) return reply.code(400).send({ error: 'invalid id' });
 
+    // Cannot delete yourself
+    if (id === session.userId) {
+      return reply.code(400).send({ error: 'cannot delete yourself' });
+    }
+
     const existing = await db.get('SELECT id, role FROM m_user WHERE id = ?', [id]);
     if (!existing) return reply.code(404).send({ error: 'not found' });
-    if (existing.role === 'owner') return reply.code(400).send({ error: 'cannot delete owner user' });
 
+    // Owner can delete other owners, but not themselves (checked above)
     await db.run('DELETE FROM m_user WHERE id = ?', [id]);
     return reply.code(204).send();
   });
