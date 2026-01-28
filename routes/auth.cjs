@@ -172,14 +172,6 @@ function registerAuthRoutes(fastify, { db }) {
 
   // Create the very first owner user (only allowed when DB has no users)
   fastify.post("/api/auth/bootstrap-owner", async (request, reply) => {
-    const row = await db.get("SELECT COUNT(1) AS userCount FROM m_user");
-    const userCount = Number(row?.userCount || 0);
-    if (userCount > 0) {
-      // Treat as idempotent to avoid client-side loops/noisy 409s.
-      // Client can redirect to /login when this flag is present.
-      return reply.code(200).send({ ok: true, alreadyBootstrapped: true });
-    }
-
     const body = request.body || {};
     const username = String(body.username ?? "").trim();
     const password = String(body.password ?? "");
@@ -195,11 +187,18 @@ function registerAuthRoutes(fastify, { db }) {
     }
 
     try {
+      // Atomic first-owner creation: only insert when there are zero users.
+      // This avoids race conditions where multiple concurrent requests could create multiple owners.
       const result = await db.run(
         `INSERT INTO m_user (username, password_hash, nama, role, avatar, must_change_password, is_active)
-         VALUES (?, ?, ?, 'owner', NULL, 0, 1)`,
+         SELECT ?, ?, ?, 'owner', NULL, 0, 1
+         WHERE NOT EXISTS (SELECT 1 FROM m_user LIMIT 1)`,
         [username, hashPassword(password), nama]
       );
+
+      if (!result || Number(result.changes || 0) === 0) {
+        return reply.code(200).send({ ok: true, alreadyBootstrapped: true });
+      }
 
       const insertedId =
         result && Object.prototype.hasOwnProperty.call(result, "lastInsertRowid")
