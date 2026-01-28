@@ -1,6 +1,65 @@
 const fs = require("fs");
 const path = require("path");
 
+// Seed data embedded directly (untuk PostgreSQL yang tidak punya akses ke file system)
+const SEED_DATA = {
+  areas: [
+    { kode: "AREA001", nama: "Jakarta Pusat" },
+    { kode: "AREA002", nama: "Jakarta Selatan" },
+    { kode: "AREA003", nama: "Jakarta Barat" },
+    { kode: "AREA004", nama: "Jakarta Timur" },
+    { kode: "AREA005", nama: "Jakarta Utara" },
+    { kode: "AREA006", nama: "Tangerang" },
+    { kode: "AREA007", nama: "Tangerang Selatan" },
+    { kode: "AREA008", nama: "Bekasi" },
+    { kode: "AREA009", nama: "Depok" },
+    { kode: "AREA010", nama: "Bogor" },
+  ],
+  kategori: [
+    { kode: "KAT001", nama: "Bearing & Filter" },
+    { kode: "KAT002", nama: "Body & Kabel" },
+    { kode: "KAT003", nama: "Transmisi" },
+    { kode: "KAT004", nama: "Oli & Pelumas" },
+    { kode: "KAT005", nama: "Elektrikal" },
+    { kode: "KAT006", nama: "Ban & Velg" },
+    { kode: "KAT007", nama: "Rem" },
+    { kode: "KAT008", nama: "Suspensi" },
+    { kode: "KAT009", nama: "Mesin" },
+    { kode: "KAT010", nama: "Knalpot" },
+  ],
+  suppliers: [
+    { kode: "SUP001", nama: "PT Supplier Jaya", alamat: "Jl. Industri No. 123, Jakarta Utara", telepon: "021-1234567", email: null },
+    { kode: "SUP002", nama: "CV Maju Bersama", alamat: "Jl. Maju No. 456, Bandung", telepon: "022-7654321", email: null },
+    { kode: "SUP003", nama: "PT Berkah Selalu", alamat: "Jl. Berkah No. 789, Surabaya", telepon: "031-9876543", email: null },
+    { kode: "SUP004", nama: "PT Honda Genuine Parts", alamat: "Jl. Sunter Permai No. 10, Jakarta Utara", telepon: "021-6501234", email: null },
+    { kode: "SUP005", nama: "PT Yamaha Indonesia Motor", alamat: "Jl. Pulo Gadung No. 55, Jakarta Timur", telepon: "021-4601234", email: null },
+  ],
+  customers: [
+    { kode: "CUST001", nama: "Bengkel Maju Jaya", area_kode: "AREA001", telepon: "021-1111111", kontak_person: "Pak Budi", alamat: "Jl. Kebon Jeruk No. 10" },
+    { kode: "CUST002", nama: "Bengkel Sentosa Motor", area_kode: "AREA002", telepon: "021-2222222", kontak_person: "Pak Andi", alamat: "Jl. Fatmawati No. 20" },
+    { kode: "CUST003", nama: "Toko Sparepart ABC", area_kode: "AREA003", telepon: "021-3333333", kontak_person: "Bu Siti", alamat: "Jl. Daan Mogot No. 100" },
+    { kode: "CUST004", nama: "Bengkel Berkah", area_kode: "AREA004", telepon: "021-4444444", kontak_person: "Pak Joko", alamat: "Jl. Kalimalang No. 50" },
+    { kode: "CUST005", nama: "Motor Sport Center", area_kode: "AREA005", telepon: "021-5555555", kontak_person: "Pak Rudi", alamat: "Jl. Pluit Raya No. 30" },
+  ],
+  barang: [
+    { kode: "BRG001", nama: "Bearing 6301", kategori_kode: "KAT001", satuan: "pcs", stok: 100, stok_minimal: 10, harga_beli: 25000, harga_jual: 35000 },
+    { kode: "BRG002", nama: "Bearing 6302", kategori_kode: "KAT001", satuan: "pcs", stok: 80, stok_minimal: 10, harga_beli: 30000, harga_jual: 42000 },
+    { kode: "BRG003", nama: "Filter Oli Honda", kategori_kode: "KAT001", satuan: "pcs", stok: 50, stok_minimal: 5, harga_beli: 15000, harga_jual: 25000 },
+    { kode: "BRG004", nama: "Kabel Gas Vario", kategori_kode: "KAT002", satuan: "pcs", stok: 30, stok_minimal: 5, harga_beli: 35000, harga_jual: 50000 },
+    { kode: "BRG005", nama: "Kabel Kopling Beat", kategori_kode: "KAT002", satuan: "pcs", stok: 25, stok_minimal: 5, harga_beli: 28000, harga_jual: 40000 },
+    { kode: "BRG006", nama: "Gear Set Supra", kategori_kode: "KAT003", satuan: "set", stok: 20, stok_minimal: 3, harga_beli: 150000, harga_jual: 200000 },
+    { kode: "BRG007", nama: "Oli Mesin 1L", kategori_kode: "KAT004", satuan: "liter", stok: 200, stok_minimal: 20, harga_beli: 45000, harga_jual: 60000 },
+    { kode: "BRG008", nama: "Oli Gardan 150ml", kategori_kode: "KAT004", satuan: "pcs", stok: 100, stok_minimal: 10, harga_beli: 18000, harga_jual: 28000 },
+    { kode: "BRG009", nama: "CDI Racing Vario", kategori_kode: "KAT005", satuan: "pcs", stok: 15, stok_minimal: 2, harga_beli: 85000, harga_jual: 120000 },
+    { kode: "BRG010", nama: "Kiprok Tiger", kategori_kode: "KAT005", satuan: "pcs", stok: 10, stok_minimal: 2, harga_beli: 95000, harga_jual: 135000 },
+    { kode: "BRG011", nama: "Ban Luar 70/90-17", kategori_kode: "KAT006", satuan: "pcs", stok: 40, stok_minimal: 5, harga_beli: 120000, harga_jual: 165000 },
+    { kode: "BRG012", nama: "Ban Dalam 17", kategori_kode: "KAT006", satuan: "pcs", stok: 60, stok_minimal: 10, harga_beli: 25000, harga_jual: 38000 },
+    { kode: "BRG013", nama: "Kampas Rem Depan Vario", kategori_kode: "KAT007", satuan: "set", stok: 35, stok_minimal: 5, harga_beli: 35000, harga_jual: 55000 },
+    { kode: "BRG014", nama: "Kampas Rem Belakang Beat", kategori_kode: "KAT007", satuan: "set", stok: 40, stok_minimal: 5, harga_beli: 28000, harga_jual: 45000 },
+    { kode: "BRG015", nama: "Shock Depan Supra", kategori_kode: "KAT008", satuan: "pcs", stok: 12, stok_minimal: 2, harga_beli: 180000, harga_jual: 250000 },
+  ],
+};
+
 function requireOwner(session, reply) {
   if (!session) return false;
   if (session.user.role !== "owner") {
@@ -620,6 +679,133 @@ function registerDbToolsRoutes(fastify, { db }) {
       message:
         "Database dihapus (dipindahkan). Aplikasi harus direstart untuk memulai dari awal.",
     });
+  });
+
+  // Seed database with demo data (works for both SQLite and PostgreSQL)
+  fastify.post("/api/admin/db/seed", async (request, reply) => {
+    const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
+    if (!session) return;
+    if (!requireOwner(session, reply)) return;
+
+    const isPostgres = fastify.dbProvider === "postgres";
+    const results = { areas: 0, kategori: 0, suppliers: 0, customers: 0, barang: 0 };
+
+    try {
+      // Seed Areas
+      for (const row of SEED_DATA.areas) {
+        try {
+          if (isPostgres) {
+            await db.run(
+              `INSERT INTO m_area (kode, nama) VALUES (?, ?) ON CONFLICT (kode) DO NOTHING`,
+              [row.kode, row.nama]
+            );
+          } else {
+            await db.run(
+              `INSERT OR IGNORE INTO m_area (kode, nama) VALUES (?, ?)`,
+              [row.kode, row.nama]
+            );
+          }
+          results.areas++;
+        } catch (e) {
+          fastify.log.warn({ error: e.message }, "Seed area warning");
+        }
+      }
+
+      // Seed Kategori
+      for (const row of SEED_DATA.kategori) {
+        try {
+          if (isPostgres) {
+            await db.run(
+              `INSERT INTO m_kategori (kode, nama) VALUES (?, ?) ON CONFLICT (kode) DO NOTHING`,
+              [row.kode, row.nama]
+            );
+          } else {
+            await db.run(
+              `INSERT OR IGNORE INTO m_kategori (kode, nama) VALUES (?, ?)`,
+              [row.kode, row.nama]
+            );
+          }
+          results.kategori++;
+        } catch (e) {
+          fastify.log.warn({ error: e.message }, "Seed kategori warning");
+        }
+      }
+
+      // Seed Suppliers
+      for (const row of SEED_DATA.suppliers) {
+        try {
+          if (isPostgres) {
+            await db.run(
+              `INSERT INTO m_supplier (kode, nama, alamat, telepon, email) VALUES (?, ?, ?, ?, ?) ON CONFLICT (kode) DO NOTHING`,
+              [row.kode, row.nama, row.alamat, row.telepon, row.email]
+            );
+          } else {
+            await db.run(
+              `INSERT OR IGNORE INTO m_supplier (kode, nama, alamat, telepon, email) VALUES (?, ?, ?, ?, ?)`,
+              [row.kode, row.nama, row.alamat, row.telepon, row.email]
+            );
+          }
+          results.suppliers++;
+        } catch (e) {
+          fastify.log.warn({ error: e.message }, "Seed supplier warning");
+        }
+      }
+
+      // Seed Customers
+      for (const row of SEED_DATA.customers) {
+        try {
+          if (isPostgres) {
+            await db.run(
+              `INSERT INTO m_customer (kode, nama, area_kode, telepon, kontak_person, alamat) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (kode) DO NOTHING`,
+              [row.kode, row.nama, row.area_kode, row.telepon, row.kontak_person, row.alamat]
+            );
+          } else {
+            await db.run(
+              `INSERT OR IGNORE INTO m_customer (kode, nama, area_kode, telepon, kontak_person, alamat) VALUES (?, ?, ?, ?, ?, ?)`,
+              [row.kode, row.nama, row.area_kode, row.telepon, row.kontak_person, row.alamat]
+            );
+          }
+          results.customers++;
+        } catch (e) {
+          fastify.log.warn({ error: e.message }, "Seed customer warning");
+        }
+      }
+
+      // Seed Barang
+      for (const row of SEED_DATA.barang) {
+        try {
+          if (isPostgres) {
+            await db.run(
+              `INSERT INTO m_barang (kode_barang, nama_barang, kategori_kode, satuan, stok, stok_minimal, harga_beli, harga_jual) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (kode_barang) DO NOTHING`,
+              [row.kode, row.nama, row.kategori_kode, row.satuan, row.stok, row.stok_minimal, row.harga_beli, row.harga_jual]
+            );
+          } else {
+            await db.run(
+              `INSERT OR IGNORE INTO m_barang (kode_barang, nama_barang, kategori_kode, satuan, stok, stok_minimal, harga_beli, harga_jual) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [row.kode, row.nama, row.kategori_kode, row.satuan, row.stok, row.stok_minimal, row.harga_beli, row.harga_jual]
+            );
+          }
+          results.barang++;
+        } catch (e) {
+          fastify.log.warn({ error: e.message }, "Seed barang warning");
+        }
+      }
+
+      return reply.send({
+        ok: true,
+        provider: isPostgres ? "postgres" : "sqlite",
+        seeded: results,
+        message: `Data demo berhasil ditambahkan: ${results.areas} area, ${results.kategori} kategori, ${results.suppliers} supplier, ${results.customers} customer, ${results.barang} barang.`,
+      });
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({
+        error: "failed to seed db",
+        detail: String(err?.message || err),
+      });
+    }
   });
 }
 
