@@ -524,13 +524,64 @@ function registerDbToolsRoutes(fastify, { db }) {
     });
   });
 
-  // DEV ONLY: Reset app by deleting/rotating the DB file.
-  // Because sql.js keeps an in-memory DB, a restart is required to start fresh.
+  // Reset database - works for both SQLite and PostgreSQL
+  // For SQLite: rotates the DB file (requires restart)
+  // For PostgreSQL: truncates all tables (no restart needed)
   fastify.post("/api/admin/db/reset", async (request, reply) => {
     const session = fastify.auth ? await fastify.auth.requireAuth(request, reply) : null;
     if (!session) return;
     if (!requireOwner(session, reply)) return;
 
+    const isPostgres = fastify.dbProvider === "postgres";
+
+    if (isPostgres) {
+      // PostgreSQL: TRUNCATE all tables in correct order (respect FK constraints)
+      try {
+        // Order matters due to foreign key constraints
+        // First: detail/child tables, then header/parent tables, finally master tables
+        const truncateOrder = [
+          "t_stok_opname_detail",
+          "t_stok_opname",
+          "t_customer_claim_detail",
+          "t_customer_claim",
+          "t_stok_keluar_detail",
+          "t_stok_keluar",
+          "t_stok_masuk_detail",
+          "t_stok_masuk",
+          "t_kartu_stok",
+          "m_barang",
+          "m_customer",
+          "m_supplier",
+          "m_kategori",
+          "m_area",
+          "m_user",
+        ];
+
+        for (const table of truncateOrder) {
+          try {
+            await db.exec(`TRUNCATE TABLE ${table} CASCADE`);
+          } catch (e) {
+            // Table might not exist, ignore
+            fastify.log.warn({ table, error: e.message }, "Truncate warning");
+          }
+        }
+
+        return reply.send({
+          ok: true,
+          provider: "postgres",
+          requiresRestart: false,
+          message: "Database PostgreSQL berhasil direset. Semua data dihapus.",
+        });
+      } catch (err) {
+        fastify.log.error(err);
+        return reply.code(500).send({
+          error: "failed to reset postgres db",
+          detail: String(err?.message || err),
+        });
+      }
+    }
+
+    // SQLite: original file-based reset logic
     if (fastify.isPackaged) {
       return reply.code(403).send({ error: "dev only" });
     }
