@@ -121,7 +121,13 @@ function registerItemRoutes(fastify, { db }) {
       await db.run('DELETE FROM t_stok_keluar_detail WHERE barang_kode = ?', [kodeParam]);
       await db.run('DELETE FROM t_stok_opname_detail WHERE barang_kode = ?', [kodeParam]);
       await db.run('DELETE FROM t_customer_claim_detail WHERE barang_kode = ?', [kodeParam]);
-      await db.run('DELETE FROM t_ledger WHERE barang_kode = ?', [kodeParam]);
+      
+      // Delete kartu stok entries
+      try {
+        await db.run('DELETE FROM t_kartu_stok WHERE barang_kode = ?', [kodeParam]);
+      } catch (e) {
+        // Table might not exist, ignore
+      }
 
       // Now delete the item itself
       await db.run('DELETE FROM m_barang WHERE kode_barang = ?', [kodeParam]);
