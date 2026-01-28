@@ -158,6 +158,13 @@ function registerAuthRoutes(fastify, { db }) {
 
   // Bootstrap (first run) helpers
   fastify.get("/api/auth/bootstrap-status", async (_request, reply) => {
+    // This endpoint is used to decide whether to show SetupOwner vs Login.
+    // Ensure it is never cached by the browser/Electron to avoid redirect loops.
+    reply
+      .header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate")
+      .header("Pragma", "no-cache")
+      .header("Expires", "0");
+
     const row = await db.get("SELECT COUNT(1) AS userCount FROM m_user");
     const userCount = Number(row?.userCount || 0);
     return reply.send({ hasUsers: userCount > 0, userCount });
